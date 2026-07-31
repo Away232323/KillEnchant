@@ -1,0 +1,30 @@
+name: Build KillEnchant
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Projekt herunterladen
+        uses: actions/checkout@v4
+
+      - name: Java 21 einrichten
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Plugin bauen
+        run: mvn --batch-mode clean package
+
+      - name: Plugin als Download bereitstellen
+        uses: actions/upload-artifact@v4
+        with:
+          name: KillEnchant-Plugin
+          path: target/KillEnchant-1.0.0.jar
+          if-no-files-found: error
