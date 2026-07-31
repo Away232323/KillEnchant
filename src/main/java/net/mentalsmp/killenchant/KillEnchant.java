@@ -16,11 +16,25 @@ public final class KillEnchant extends JavaPlugin {
                 this
         );
 
-        getLogger().info("KillEnchant wurde erfolgreich aktiviert!");
+        getServer().getPluginManager().registerEvents(
+                new UniversalArmorListener(this),
+                this
+        );
+
+        getServer().getPluginManager().registerEvents(
+                new UniversalProjectileListener(),
+                this
+        );
+
+        getLogger().info(
+                "KillEnchant wurde erfolgreich aktiviert!"
+        );
     }
 
     @Override
     public void onDisable() {
-        getLogger().info("KillEnchant wurde deaktiviert.");
+        getLogger().info(
+                "KillEnchant wurde deaktiviert."
+        );
     }
 }
