@@ -26,6 +26,11 @@ public final class KillEnchant extends JavaPlugin {
                 this
         );
 
+        getServer().getPluginManager().registerEvents(
+                new UniversalUtilityListener(this),
+                this
+        );
+
         getLogger().info(
                 "KillEnchant wurde erfolgreich aktiviert!"
         );
