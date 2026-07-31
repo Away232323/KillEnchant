@@ -1,0 +1,6 @@
+name: KillEnchant
+version: 1.0.0
+main: net.mentalsmp.killenchant.KillEnchant
+api-version: '1.21.6'
+author: Away
+description: Gibt dem verwendeten Item nach einem Spielerkill ein zufälliges Enchantment.
