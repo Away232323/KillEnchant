@@ -72,11 +72,12 @@ public final class UniversalUtilityListener implements Listener {
 
     /*
      * LURE, LUCK OF THE SEA UND LOYALTY
+     *
+     * Das Event darf cancelled Events nicht ignorieren, weil Paper einen
+     * Rechtsklick in die Luft bei vielen normalen Items bereits als
+     * cancelled ausliefert. So funktionieren die Fähigkeiten auch in Luft.
      */
-    @EventHandler(
-            priority = EventPriority.LOWEST,
-            ignoreCancelled = true
-    )
+    @EventHandler(priority = EventPriority.LOWEST)
     public void onUniversalRightClick(
             PlayerInteractEvent event
     ) {
@@ -137,11 +138,10 @@ public final class UniversalUtilityListener implements Listener {
             return;
         }
 
-        // Im Wasser erhält Riptide Vorrang.
+        // Unter Wasser erhält Riptide Vorrang.
         if (item.getEnchantmentLevel(
                 Enchantment.RIPTIDE
-        ) > 0 && (player.isInWater()
-                || player.isInRain())) {
+        ) > 0 && player.isInWater()) {
             return;
         }
 
