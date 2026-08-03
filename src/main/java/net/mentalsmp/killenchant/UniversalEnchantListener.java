@@ -39,9 +39,8 @@ public final class UniversalEnchantListener implements Listener {
     /*
      * RIPTIDE AUF JEDEM ITEM
      *
-     * WICHTIG: Dieses Event darf cancelled Events nicht ignorieren.
-     * Paper markiert einen Rechtsklick in die Luft oft bereits als
-     * cancelled, wenn Vanilla mit dem gehaltenen Item nichts machen kann.
+     * Paper markiert Rechtsklicks in die Luft bei normalen Items teilweise
+     * bereits als cancelled. Deshalb ignorieren wir cancelled Events hier nicht.
      */
     @EventHandler(priority = EventPriority.LOWEST)
     public void onRiptideUse(PlayerInteractEvent event) {
@@ -90,8 +89,6 @@ public final class UniversalEnchantListener implements Listener {
         }
 
         lastRiptideUse.put(player.getUniqueId(), currentTime);
-
-        // Verhindert, dass gleichzeitig ein Block oder ein anderes Item benutzt wird.
         event.setCancelled(true);
 
         double strength = 1.15D + (0.55D * riptideLevel);
@@ -134,8 +131,10 @@ public final class UniversalEnchantListener implements Listener {
     /*
      * DENSITY, BREACH UND WIND BURST AUF JEDEM ITEM
      *
-     * Ein Fall-Angriff mit einem solchen Item verhält sich wie ein
-     * Mace-Smash — inklusive Mace-Sound und Wind-Burst-Partikeln.
+     * Density: zusätzlicher höhenabhängiger Smash-Schaden.
+     * Breach: teilweise Rüstungsdurchdringung.
+     * Wind Burst: schleudert den Angreifer hoch, gibt aber KEINEN
+     * zusätzlichen höhenabhängigen Schaden.
      */
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onUniversalMaceHit(EntityDamageByEntityEvent event) {
@@ -166,8 +165,7 @@ public final class UniversalEnchantListener implements Listener {
 
         double damage = event.getDamage();
 
-        // Breach wirkt auch bei einem normalen Treffer und umgeht einen
-        // Teil der Rüstung. Das ist eine Bukkit-Nachbildung der Vanilla-Wirkung.
+        // Breach wirkt bei jedem Treffer, aber skaliert nicht mit der Fallhöhe.
         damage += calculateBreachBonus(
                 event.getEntity() instanceof LivingEntity livingEntity
                         ? livingEntity
@@ -178,21 +176,23 @@ public final class UniversalEnchantListener implements Listener {
 
         float fallDistance = player.getFallDistance();
 
-        // Ohne richtigen Fall bleibt nur der Breach-Rüstungsdurchbruch aktiv.
+        // Ohne richtigen Fall bleibt nur Breach aktiv.
         if (fallDistance <= 1.5F) {
             event.setDamage(damage);
             return;
         }
 
-        double maceSmashBonus = calculateMaceSmashBonus(fallDistance);
-        double densityBonus = fallDistance * 0.5D * densityLevel;
+        /*
+         * Nur Density gibt den Mace-artigen Fallschaden.
+         * Wind Burst allein verändert den verursachten Schaden nicht.
+         */
+        if (densityLevel > 0) {
+            double maceSmashBonus = calculateMaceSmashBonus(fallDistance);
+            double densityBonus = fallDistance * 0.5D * densityLevel;
+            damage += maceSmashBonus + densityBonus;
+        }
 
-        event.setDamage(
-                damage
-                        + maceSmashBonus
-                        + densityBonus
-        );
-
+        event.setDamage(damage);
         player.setFallDistance(0.0F);
 
         Location impact = event.getEntity()
@@ -240,11 +240,7 @@ public final class UniversalEnchantListener implements Listener {
             );
         }
 
-        /*
-         * Wind Burst schleudert den Angreifer nach einem erfolgreichen
-         * Smash wieder nach oben. Density/Breach bekommen trotzdem immer
-         * die Wind-Partikel und den echten Mace-Sound.
-         */
+        // Wind Burst schleudert nur hoch und erhöht nicht den Treffer-Schaden.
         if (windBurstLevel > 0) {
             plugin.getServer().getScheduler().runTask(
                     plugin,
@@ -253,17 +249,17 @@ public final class UniversalEnchantListener implements Listener {
                             return;
                         }
 
-                        Vector velocity = player.getVelocity();
+                        Vector currentVelocity = player.getVelocity();
                         double launchHeight = 0.75D + (0.35D * windBurstLevel);
 
-                        velocity.setY(
+                        currentVelocity.setY(
                                 Math.max(
-                                        velocity.getY(),
+                                        currentVelocity.getY(),
                                         launchHeight
                                 )
                         );
 
-                        player.setVelocity(velocity);
+                        player.setVelocity(currentVelocity);
                         player.setFallDistance(0.0F);
                     }
             );
@@ -297,9 +293,6 @@ public final class UniversalEnchantListener implements Listener {
         return baseDamage * armorReductionEstimate * bypassFraction;
     }
 
-    /*
-     * Vanilla-nahe Berechnung des zusätzlichen Mace-Smash-Schadens.
-     */
     private double calculateMaceSmashBonus(float fallDistance) {
         if (fallDistance <= 3.0F) {
             return 4.0D * fallDistance;
