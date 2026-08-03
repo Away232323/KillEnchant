@@ -18,6 +18,7 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
@@ -34,9 +35,11 @@ public final class UniversalProjectileListener implements Listener {
     /*
      * BOGEN- UND ARMBRUST-ENCHANTMENTS AUF JEDEM ITEM
      *
-     * Rechtsklick schießt einen Pfeil.
+     * Das Event darf cancelled Events nicht ignorieren, weil Paper einen
+     * Rechtsklick in die Luft bei normalen Items oft bereits als cancelled
+     * markiert. Dadurch funktioniert die Fähigkeit jetzt auch in der Luft.
      */
-    @EventHandler(ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.NORMAL)
     public void onUniversalBowUse(PlayerInteractEvent event) {
         if (event.getHand() != EquipmentSlot.HAND) {
             return;
@@ -51,6 +54,23 @@ public final class UniversalProjectileListener implements Listener {
 
         ItemStack weapon =
                 player.getInventory().getItemInMainHand();
+
+        if (weapon.getType() == Material.AIR) {
+            return;
+        }
+
+        // Unter Wasser erhält Riptide Vorrang.
+        if (weapon.getEnchantmentLevel(Enchantment.RIPTIDE) > 0
+                && player.isInWater()) {
+            return;
+        }
+
+        // Schleichen + Rechtsklick mit Angel-Enchantments gehört zur Angel-Fähigkeit.
+        if (player.isSneaking()
+                && (weapon.getEnchantmentLevel(Enchantment.LURE) > 0
+                || weapon.getEnchantmentLevel(Enchantment.LUCK_OF_THE_SEA) > 0)) {
+            return;
+        }
 
         if (isNativeRightClickWeapon(weapon.getType())) {
             return;
@@ -117,6 +137,45 @@ public final class UniversalProjectileListener implements Listener {
                 1.0F,
                 1.0F
         );
+    }
+
+    /*
+     * PIERCING/DURCHSCHUSS AUF JEDEM NAHKAMPF-ITEM
+     *
+     * Wenn ein Spieler mit einem Piercing-Item zuschlägt, wird der
+     * BLOCKING-Schadensmodifikator des Schildes entfernt. Dadurch geht
+     * der Treffer durch das hochgehaltene Schild, bleibt aber ansonsten
+     * ein normaler Treffer mit Rüstung und allen anderen Berechnungen.
+     */
+    @SuppressWarnings("deprecation")
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onUniversalPiercingMelee(EntityDamageByEntityEvent event) {
+        if (!(event.getDamager() instanceof Player attacker)) {
+            return;
+        }
+
+        if (!(event.getEntity() instanceof Player defender)) {
+            return;
+        }
+
+        if (!defender.isBlocking()) {
+            return;
+        }
+
+        ItemStack weapon = attacker.getInventory().getItemInMainHand();
+
+        int piercingLevel = weapon.getEnchantmentLevel(Enchantment.PIERCING);
+
+        if (piercingLevel <= 0) {
+            return;
+        }
+
+        if (event.isApplicable(EntityDamageEvent.DamageModifier.BLOCKING)) {
+            event.setDamage(
+                    EntityDamageEvent.DamageModifier.BLOCKING,
+                    0.0D
+            );
+        }
     }
 
     /*
