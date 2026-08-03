@@ -131,10 +131,11 @@ public final class UniversalEnchantListener implements Listener {
     /*
      * DENSITY, BREACH UND WIND BURST AUF JEDEM ITEM
      *
-     * Density: zusätzlicher höhenabhängiger Smash-Schaden.
-     * Breach: teilweise Rüstungsdurchdringung.
-     * Wind Burst: schleudert den Angreifer hoch, gibt aber KEINEN
-     * zusätzlichen höhenabhängigen Schaden.
+     * Jedes dieser drei Mace-Enchantments macht das Item bei einem
+     * Fall-Angriff zu einer Mace und gibt den normalen Smash-Schaden.
+     * Density gibt zusätzlich Bonus-Schaden pro Fallhöhe.
+     * Breach durchdringt zusätzlich einen Teil der Rüstung.
+     * Wind Burst schleudert den Angreifer nach dem Treffer hoch.
      */
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onUniversalMaceHit(EntityDamageByEntityEvent event) {
@@ -165,7 +166,7 @@ public final class UniversalEnchantListener implements Listener {
 
         double damage = event.getDamage();
 
-        // Breach wirkt bei jedem Treffer, aber skaliert nicht mit der Fallhöhe.
+        // Breach wirkt bei jedem Treffer und skaliert nicht direkt mit der Fallhöhe.
         damage += calculateBreachBonus(
                 event.getEntity() instanceof LivingEntity livingEntity
                         ? livingEntity
@@ -176,20 +177,18 @@ public final class UniversalEnchantListener implements Listener {
 
         float fallDistance = player.getFallDistance();
 
-        // Ohne richtigen Fall bleibt nur Breach aktiv.
+        // Ohne richtigen Fall bleibt nur der Breach-Rüstungsdurchbruch aktiv.
         if (fallDistance <= 1.5F) {
             event.setDamage(damage);
             return;
         }
 
-        /*
-         * Nur Density gibt den Mace-artigen Fallschaden.
-         * Wind Burst allein verändert den verursachten Schaden nicht.
-         */
+        // Jedes Mace-Enchantment gibt den normalen höhenabhängigen Smash-Schaden.
+        damage += calculateMaceSmashBonus(fallDistance);
+
+        // Density verstärkt den Smash zusätzlich.
         if (densityLevel > 0) {
-            double maceSmashBonus = calculateMaceSmashBonus(fallDistance);
-            double densityBonus = fallDistance * 0.5D * densityLevel;
-            damage += maceSmashBonus + densityBonus;
+            damage += fallDistance * 0.5D * densityLevel;
         }
 
         event.setDamage(damage);
@@ -240,7 +239,6 @@ public final class UniversalEnchantListener implements Listener {
             );
         }
 
-        // Wind Burst schleudert nur hoch und erhöht nicht den Treffer-Schaden.
         if (windBurstLevel > 0) {
             plugin.getServer().getScheduler().runTask(
                     plugin,
