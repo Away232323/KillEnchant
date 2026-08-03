@@ -74,8 +74,8 @@ public final class UniversalEnchantListener implements Listener {
             return;
         }
 
-        // Wie beim Vanilla-Dreizack: nur im Wasser oder bei Regen.
-        if (!player.isInWater() && !player.isInRain()) {
+        // Für dieses Projekt funktioniert Riptide ausschließlich im Wasser.
+        if (!player.isInWater()) {
             return;
         }
 
