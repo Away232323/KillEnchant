@@ -31,13 +31,14 @@ import java.util.UUID;
 public final class UniversalProjectileListener implements Listener {
 
     private final Map<UUID, Long> lastShot = new HashMap<>();
+    private boolean applyingChannelingDamage;
 
     /*
      * BOGEN- UND ARMBRUST-ENCHANTMENTS AUF JEDEM ITEM
      *
      * Das Event darf cancelled Events nicht ignorieren, weil Paper einen
      * Rechtsklick in die Luft bei normalen Items oft bereits als cancelled
-     * markiert. Dadurch funktioniert die Fähigkeit jetzt auch in der Luft.
+     * markiert. Dadurch funktioniert die Fähigkeit auch in der Luft.
      */
     @EventHandler(priority = EventPriority.NORMAL)
     public void onUniversalBowUse(PlayerInteractEvent event) {
@@ -51,9 +52,7 @@ public final class UniversalProjectileListener implements Listener {
         }
 
         Player player = event.getPlayer();
-
-        ItemStack weapon =
-                player.getInventory().getItemInMainHand();
+        ItemStack weapon = player.getInventory().getItemInMainHand();
 
         if (weapon.getType() == Material.AIR) {
             return;
@@ -80,10 +79,7 @@ public final class UniversalProjectileListener implements Listener {
             return;
         }
 
-        int quickChargeLevel =
-                weapon.getEnchantmentLevel(
-                        Enchantment.QUICK_CHARGE
-                );
+        int quickChargeLevel = weapon.getEnchantmentLevel(Enchantment.QUICK_CHARGE);
 
         long cooldown = Math.max(
                 250L,
@@ -91,11 +87,7 @@ public final class UniversalProjectileListener implements Listener {
         );
 
         long currentTime = System.currentTimeMillis();
-
-        long previousShot = lastShot.getOrDefault(
-                player.getUniqueId(),
-                0L
-        );
+        long previousShot = lastShot.getOrDefault(player.getUniqueId(), 0L);
 
         if (currentTime - previousShot < cooldown) {
             return;
@@ -111,17 +103,10 @@ public final class UniversalProjectileListener implements Listener {
             return;
         }
 
-        lastShot.put(
-                player.getUniqueId(),
-                currentTime
-        );
-
+        lastShot.put(player.getUniqueId(), currentTime);
         event.setCancelled(true);
 
-        int multishotLevel =
-                weapon.getEnchantmentLevel(
-                        Enchantment.MULTISHOT
-                );
+        int multishotLevel = weapon.getEnchantmentLevel(Enchantment.MULTISHOT);
 
         if (multishotLevel > 0) {
             shootArrow(player, weapon, -10.0D);
@@ -142,10 +127,8 @@ public final class UniversalProjectileListener implements Listener {
     /*
      * PIERCING/DURCHSCHUSS AUF JEDEM NAHKAMPF-ITEM
      *
-     * Wenn ein Spieler mit einem Piercing-Item zuschlägt, wird der
-     * BLOCKING-Schadensmodifikator des Schildes entfernt. Dadurch geht
-     * der Treffer durch das hochgehaltene Schild, bleibt aber ansonsten
-     * ein normaler Treffer mit Rüstung und allen anderen Berechnungen.
+     * Ein Treffer mit einem Piercing-Item geht durch ein hochgehaltenes
+     * Schild, bleibt ansonsten aber ein normaler Treffer.
      */
     @SuppressWarnings("deprecation")
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -163,7 +146,6 @@ public final class UniversalProjectileListener implements Listener {
         }
 
         ItemStack weapon = attacker.getInventory().getItemInMainHand();
-
         int piercingLevel = weapon.getEnchantmentLevel(Enchantment.PIERCING);
 
         if (piercingLevel <= 0) {
@@ -185,49 +167,58 @@ public final class UniversalProjectileListener implements Listener {
             priority = EventPriority.HIGH,
             ignoreCancelled = true
     )
-    public void onUniversalTridentHit(
-            EntityDamageByEntityEvent event
-    ) {
+    public void onUniversalTridentHit(EntityDamageByEntityEvent event) {
+        // Verhindert, dass der manuell verursachte Channeling-Schaden
+        // dieses Event erneut endlos auslöst.
+        if (applyingChannelingDamage) {
+            return;
+        }
+
         if (!(event.getDamager() instanceof Player player)) {
             return;
         }
 
-        if (!(event.getEntity()
-                instanceof LivingEntity target)) {
+        if (!(event.getEntity() instanceof LivingEntity target)) {
             return;
         }
 
-        ItemStack weapon =
-                player.getInventory().getItemInMainHand();
+        ItemStack weapon = player.getInventory().getItemInMainHand();
 
         // Beim richtigen Dreizack übernimmt Minecraft.
         if (weapon.getType() == Material.TRIDENT) {
             return;
         }
 
-        int impalingLevel =
-                weapon.getEnchantmentLevel(
-                        Enchantment.IMPALING
-                );
+        int impalingLevel = weapon.getEnchantmentLevel(Enchantment.IMPALING);
 
-        if (impalingLevel > 0
-                && target instanceof WaterMob) {
+        if (impalingLevel > 0 && target instanceof WaterMob) {
             event.setDamage(
-                    event.getDamage()
-                            + (2.5D * impalingLevel)
+                    event.getDamage() + (2.5D * impalingLevel)
             );
         }
 
-        int channelingLevel =
-                weapon.getEnchantmentLevel(
-                        Enchantment.CHANNELING
-                );
+        int channelingLevel = weapon.getEnchantmentLevel(Enchantment.CHANNELING);
 
         if (channelingLevel > 0
                 && canUseChanneling(target.getLocation())) {
-            target.getWorld().strikeLightning(
-                    target.getLocation()
-            );
+
+            /*
+             * Nur der optische Blitz wird gespawnt. Der echte Blitz würde
+             * alle nahen Entities treffen und dadurch auch den Angreifer.
+             */
+            target.getWorld().strikeLightningEffect(target.getLocation());
+
+            applyingChannelingDamage = true;
+
+            try {
+                // 5 Schaden = 2,5 Herzen, entsprechend einem Blitztreffer.
+                target.damage(5.0D, player);
+                target.setFireTicks(
+                        Math.max(target.getFireTicks(), 160)
+                );
+            } finally {
+                applyingChannelingDamage = false;
+            }
         }
     }
 
@@ -247,11 +238,6 @@ public final class UniversalProjectileListener implements Listener {
                 direction
         );
 
-        /*
-         * Der Pfeil merkt sich das verzauberte Item.
-         * Dadurch funktionieren auch Punch und weitere
-         * Projektil-Effekte.
-         */
         arrow.setWeapon(weapon.clone());
         arrow.setCritical(true);
 
@@ -259,20 +245,9 @@ public final class UniversalProjectileListener implements Listener {
                 AbstractArrow.PickupStatus.DISALLOWED
         );
 
-        int powerLevel =
-                weapon.getEnchantmentLevel(
-                        Enchantment.POWER
-                );
-
-        int flameLevel =
-                weapon.getEnchantmentLevel(
-                        Enchantment.FLAME
-                );
-
-        int piercingLevel =
-                weapon.getEnchantmentLevel(
-                        Enchantment.PIERCING
-                );
+        int powerLevel = weapon.getEnchantmentLevel(Enchantment.POWER);
+        int flameLevel = weapon.getEnchantmentLevel(Enchantment.FLAME);
+        int piercingLevel = weapon.getEnchantmentLevel(Enchantment.PIERCING);
 
         double damage = 2.0D;
 
@@ -288,9 +263,6 @@ public final class UniversalProjectileListener implements Listener {
         }
     }
 
-    /*
-     * Infinity verhindert das Verbrauchen von Pfeilen.
-     */
     private boolean takeArrow(
             Player player,
             ItemStack weapon
@@ -299,31 +271,22 @@ public final class UniversalProjectileListener implements Listener {
             return true;
         }
 
-        if (weapon.getEnchantmentLevel(
-                Enchantment.INFINITY
-        ) > 0) {
+        if (weapon.getEnchantmentLevel(Enchantment.INFINITY) > 0) {
             return true;
         }
 
         for (int slot = 0; slot < 36; slot++) {
-            ItemStack inventoryItem =
-                    player.getInventory().getItem(slot);
+            ItemStack inventoryItem = player.getInventory().getItem(slot);
 
             if (inventoryItem == null
-                    || inventoryItem.getType()
-                    != Material.ARROW) {
+                    || inventoryItem.getType() != Material.ARROW) {
                 continue;
             }
 
             if (inventoryItem.getAmount() <= 1) {
-                player.getInventory().setItem(
-                        slot,
-                        null
-                );
+                player.getInventory().setItem(slot, null);
             } else {
-                inventoryItem.setAmount(
-                        inventoryItem.getAmount() - 1
-                );
+                inventoryItem.setAmount(inventoryItem.getAmount() - 1);
             }
 
             return true;
@@ -332,44 +295,24 @@ public final class UniversalProjectileListener implements Listener {
         return false;
     }
 
-    private boolean hasProjectileEnchantment(
-            ItemStack item
-    ) {
-        return item.getEnchantmentLevel(
-                Enchantment.POWER
-        ) > 0
-                || item.getEnchantmentLevel(
-                        Enchantment.PUNCH
-                ) > 0
-                || item.getEnchantmentLevel(
-                        Enchantment.FLAME
-                ) > 0
-                || item.getEnchantmentLevel(
-                        Enchantment.INFINITY
-                ) > 0
-                || item.getEnchantmentLevel(
-                        Enchantment.MULTISHOT
-                ) > 0
-                || item.getEnchantmentLevel(
-                        Enchantment.QUICK_CHARGE
-                ) > 0
-                || item.getEnchantmentLevel(
-                        Enchantment.PIERCING
-                ) > 0;
+    private boolean hasProjectileEnchantment(ItemStack item) {
+        return item.getEnchantmentLevel(Enchantment.POWER) > 0
+                || item.getEnchantmentLevel(Enchantment.PUNCH) > 0
+                || item.getEnchantmentLevel(Enchantment.FLAME) > 0
+                || item.getEnchantmentLevel(Enchantment.INFINITY) > 0
+                || item.getEnchantmentLevel(Enchantment.MULTISHOT) > 0
+                || item.getEnchantmentLevel(Enchantment.QUICK_CHARGE) > 0
+                || item.getEnchantmentLevel(Enchantment.PIERCING) > 0;
     }
 
-    private boolean isNativeRightClickWeapon(
-            Material material
-    ) {
+    private boolean isNativeRightClickWeapon(Material material) {
         return material == Material.BOW
                 || material == Material.CROSSBOW
                 || material == Material.TRIDENT
                 || material == Material.FISHING_ROD;
     }
 
-    private boolean canUseChanneling(
-            Location location
-    ) {
+    private boolean canUseChanneling(Location location) {
         World world = location.getWorld();
 
         if (world == null || !world.isThundering()) {
